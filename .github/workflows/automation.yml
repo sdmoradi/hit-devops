@@ -16,17 +16,20 @@ jobs:
       - if: contains(steps.changed-files.outputs.files, 'requirements.txt')
         run: |
           cat version.txt | awk '{split($0,a,"."); print a[1]+1 "." a[2] "." a[3]}' | tee version.txt
+          echo "commit=True" >> $GITHUB_ENV
 
       - if: contains(steps.changed-files.outputs.files, 'app.py')
         run: |
           cat version.txt | awk '{split($0,a,"."); print a[1] "." a[2]+1 "." a[3]}' | tee version.txt
+          echo "commit=True" >> $GITHUB_ENV
 
       - if: contains(steps.changed-files.outputs.files, 'README.md')
         run: |
           cat version.txt | awk '{split($0,a,"."); print a[1] "." a[2] "." a[3]+1}' | tee version.txt
+          echo "commit=True" >> $GITHUB_ENV
 
       - name: change-commit-push
-        if: ${{env.req_changed}} == 'True'
+        if: ${{env.commit}} == 'True'
         run: |
           git config --global user.name "sdmoradi"
           git config --global user.email "sdmrd67@gmail.com"
