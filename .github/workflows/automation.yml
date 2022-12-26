@@ -10,22 +10,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - id: changed-requirements
+      - id: changed-files
         uses: ahmadnassri/action-changed-files@v1
+      - run: |
+          for file in ${{ steps.changed-files.outputs.files }}; do
+            echo "$file has changed"
+          done
       - if: contains(steps.changed-files.outputs.files, 'requirements.txt')
         run: |
           cat version.txt | awk '{split($0,a,"."); print a[1]+1 "." a[2] "." a[3]}' | tee version.txt
           echo "commit=True" >> $GITHUB_ENV
-          
-      - id: changed-app
-        uses: ahmadnassri/action-changed-files@v1
+
       - if: contains(steps.changed-files.outputs.files, 'app.py')
         run: |
           cat version.txt | awk '{split($0,a,"."); print a[1] "." a[2]+1 "." a[3]}' | tee version.txt
           echo "commit=True" >> $GITHUB_ENV
-          
-      - id: changed-README
-        uses: ahmadnassri/action-changed-files@v1
+
       - if: contains(steps.changed-files.outputs.files, 'README.md')
         run: |
           cat version.txt | awk '{split($0,a,"."); print a[1] "." a[2] "." a[3]+1}' | tee version.txt
