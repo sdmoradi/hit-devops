@@ -20,3 +20,39 @@ spec:
         image: sdmoradi/hit-app:latest
         ports:
         - containerPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: hit
+  name: medusa-svc
+  namespace: hit
+spec:
+  ports:
+  - name: http
+    port: 5000
+    protocol: TCP
+    targetPort: 5000
+  selector:
+    app: hit
+  type: ClusterIP
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: medusa-ing
+  namespace: hit
+spec:
+  entryPoints:
+    - web
+      #      - websecure
+  routes:
+  - match: Host(`medusa.nullip.ir`) && (PathPrefix(`/`))
+    kind: Rule
+    services:
+      - name: medusa-svc
+        port: 5000
+        #    tls:
+        #      secretName: medusa-secret
+
