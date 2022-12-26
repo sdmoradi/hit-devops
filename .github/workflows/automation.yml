@@ -72,9 +72,16 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/hit-app:latest
 
-      - name: kubectl action
+      - name: kubectl apply deployment
         if: ${{env.commit}} == 'True'
         uses: tale/kubectl-action@v1
         with:
           base64-kube-config: ${{ secrets.KUBE_CONFIG }}
       - run: kubectl apply -f deployment.yml
+
+      - name: kubectl change image to new
+        if: ${{env.commit}} == 'True'
+        uses: tale/kubectl-action@v1
+        with:
+          base64-kube-config: ${{ secrets.KUBE_CONFIG }}
+      - run: kubectl set image deploy/hit-deployment -n hit medusa=${{ secrets.DOCKER_HUB_USERNAME }}/hit-app:${{env.version}}

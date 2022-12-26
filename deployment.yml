@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: medusa
-        image: sdmoradi/hit-app:${{env.version}}
+        image: sdmoradi/hit-app:latest
         ports:
         - containerPort: 5000
 ---
