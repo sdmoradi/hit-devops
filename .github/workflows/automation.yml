@@ -77,4 +77,4 @@ jobs:
         uses: tale/kubectl-action@v1
         with:
           base64-kube-config: ${{ secrets.KUBE_CONFIG }}
-      - run: kubectl run hit-app --image=${{ secrets.DOCKER_HUB_USERNAME }}/hit-app:latest -n hit
+      - run: kubectl apply -f deployment.yml
