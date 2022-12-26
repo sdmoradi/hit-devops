@@ -13,7 +13,7 @@ jobs:
         shell: bash
         run : |
           # Diff HEAD with the previous commit
-          diff=$(git diff --name-only HEAD^ HEAD)
+          diff=$(git diff HEAD^ HEAD --name-only)
           SourceDiff=$(echo $diff | grep "requirements.txt" | wc -l)
       - name: set-env
         run : echo "req_changed=$SourceDiff" >> $GITHUB_ENV
