@@ -22,23 +22,15 @@ dictConfig({
 
 app = Flask(__name__)
 
-req_time = datetime.now().strftime("%Y-%d-%m  %H:%M:%S")
 
 @app.route("/", methods=["GET", "POST"])
 def home():
+    req_time = datetime.now().strftime("%Y-%d-%m  %H:%M:%S")
     log = {
-        "url": [
-            request.url
-        ],
-        "time": [
-            req_time
-        ],
-        "client_ip": [
-            request.remote_addr
-        ],
-        "service_name": [
-            "medusa"
-        ]
+        "url": request.url,
+        "time": req_time,
+        "client_ip": request.remote_addr,
+        "service_name": "medusa"
     }
     app.logger.error(log)
     return render_template("index.html")
