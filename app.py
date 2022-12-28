@@ -1,13 +1,13 @@
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 import sys
-import json
+from datetime import datetime
 import logging
 from logging.config import dictConfig
 
 dictConfig({
     'version': 1,
     'formatters': {'default': {
-        'format': '[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
+        'format': '%(message)s',
     }},
     'handlers': {'wsgi': {
         'class': 'logging.StreamHandler',
@@ -22,13 +22,17 @@ dictConfig({
 
 app = Flask(__name__)
 
-log = '{"url": "hit.local/version","time": "2022-01-01 14:22:33","client_ip": "0.0.0.0","service_name": "medusa"}'
-json_log = json.loads(log)
-json_formatted_log = json.dumps(json_log, indent=1)
 
 @app.route("/", methods=["GET", "POST"])
 def home():
-    app.logger.info(json_formatted_log)
+    req_time = datetime.now().strftime("%Y-%d-%m  %H:%M:%S")
+    log = {
+        "url": request.url,
+        "time": req_time,
+        "client_ip": request.remote_addr,
+        "service_name": "medusa"
+    }
+    app.logger.info(log)
     return render_template("index.html")
 
 
