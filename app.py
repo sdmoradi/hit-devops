@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, json
 import sys
 from datetime import datetime
 import logging
@@ -26,12 +26,12 @@ app = Flask(__name__)
 @app.route("/", methods=["GET", "POST"])
 def home():
     req_time = datetime.now().strftime("%Y-%d-%m  %H:%M:%S")
-    log = {
+    log = json.dumps({
         "url": request.url,
         "time": req_time,
         "client_ip": request.remote_addr,
         "service_name": "medusa"
-    }
+    }, indent=2)
     app.logger.error(log)
     return render_template("index.html")
 
