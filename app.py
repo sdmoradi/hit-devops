@@ -32,7 +32,7 @@ def home():
         "client_ip": request.remote_addr,
         "service_name": "medusa"
     }
-    app.logger.info(log)
+    app.logger.error(log)
     return render_template("index.html")
 
 
