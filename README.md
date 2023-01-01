@@ -4,7 +4,7 @@
 
 This is the sample project for the DevOps challenge. If you have reached this repo it means that you have passed the technical interview for the DevOps position in HIT (congratulations!l) and it's time for a challenge 🚀.
 
-## Getting Started
+### Getting Started
 
 To complete the challenge you should complete the following steps:
 
