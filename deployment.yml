@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: hit-deployment
-  namespace: hit
+  namespace: test
   labels:
     app: hit
 spec:
@@ -27,7 +27,7 @@ metadata:
   labels:
     app: hit
   name: medusa-svc
-  namespace: hit
+  namespace: test
 spec:
   ports:
   - name: http
@@ -38,21 +38,21 @@ spec:
     app: hit
   type: ClusterIP
 ---
-apiVersion: traefik.containo.us/v1alpha1
-kind: IngressRoute
+apiVersion: networking.k8s.io/v1
+kind: Ingress
 metadata:
   name: medusa-ing
-  namespace: hit
+  namespace: test
 spec:
-  entryPoints:
-    - web
-      #      - websecure
-  routes:
-  - match: Host(`medusa.nullip.ir`) && (PathPrefix(`/`))
-    kind: Rule
-    services:
-      - name: medusa-svc
-        port: 5000
-        #    tls:
-        #      secretName: medusa-secret
+  ingressClassName: nginx
+  rules:
+  - host: medusa.172.31.58.10.nip.io
+    http:
+      paths:
+      - backend:
+          service:
+            name: medusa-svc
+            port: 5000
+        path: /
+        pathType: Prefix
 
