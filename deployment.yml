@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: medusa
-        image: sdmoradi/hit-app:latest
+        image: docker.iranrepo.ir/sdmoradi/hit-app:latest
         ports:
         - containerPort: 5000
 ---
