@@ -7,15 +7,11 @@ metadata:
     app: kibana
 data:
   kibana.yml: |-
-
     server.host: 0.0.0.0
-    elasticsearch.hosts: 
-    - ${ELASTICSEARCH_HOST}
-    elasticsearch.username: ${ELASTICSEARCH_USERNAME}
-    elasticsearch.password: ${ELASTICSEARCH_PASSWORD}
+    elasticsearch.hosts:
+      - ${ELASTICSEARCH_HOST}
     xpack.security.enabled: false
     server.publicBaseUrl: http://kibana.nullip.ir
-
 ---
 apiVersion: v1
 kind: Service
@@ -28,10 +24,10 @@ spec:
   selector:
     app: kibana
   ports:
-  - name: http
-    port: 5601
-    protocol: TCP
-    targetPort: 5601
+    - name: http
+      port: 5601
+      protocol: TCP
+      targetPort: 5601
   type: ClusterIP
 ---
 apiVersion: apps/v1
@@ -52,29 +48,30 @@ spec:
         app: kibana
     spec:
       containers:
-      - name: kibana
-        image: kibana:7.17.0
-        env:
-          - name: ELASTICSEARCH_HOST
-            value: "http://elasticsearch:9200"
-          - name: ELASTICSEARCH_USERNAME
-            value: elastic
-          - name: ELASTICSEARCH_PASSWORD
-            value: changeme
-        ports:
-        - containerPort: 5601
-          name: kibana
-          protocol: TCP
-        volumeMounts:
-        - name: config
-          mountPath: /usr/share/kibana/config/kibana.yml
-          subPath: kibana.yml
+        - name: kibana
+          image: docker.elastic.co/kibana/kibana:7.17.17
+          env:
+            - name: ELASTICSEARCH_HOST
+              value: "http://elasticsearch:9200"
+          ports:
+            - name: http
+              containerPort: 5601
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          volumeMounts:
+            - name: config
+              mountPath: /usr/share/kibana/config/kibana.yml
+              subPath: kibana.yml
       volumes:
-      - name: config
-        configMap:
-          name: kibana-config
-
+        - name: config
+          configMap:
+            name: kibana-config
 ---
+# This route assumes Traefik is installed with the legacy traefik.containo.us CRD.
 apiVersion: traefik.containo.us/v1alpha1
 kind: IngressRoute
 metadata:
@@ -87,6 +84,5 @@ spec:
     - match: Host(`kibana.nullip.ir`)
       kind: Rule
       services:
-      - name: kibana
-        port: 5601
-
+        - name: kibana
+          port: 5601
