@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import sys
 from datetime import datetime
 
 from flask import Flask, jsonify, render_template, request
@@ -14,8 +15,7 @@ app = Flask(__name__)
 if os.getenv("TRUST_PROXY_HEADERS", "true").lower() == "true":
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
-handler = logging.StreamHandler()
-handler.setStream(__import__("sys").stdout)
+handler = logging.StreamHandler(sys.stdout)
 handler.setFormatter(logging.Formatter("%(message)s"))
 app.logger.handlers.clear()
 app.logger.addHandler(handler)
