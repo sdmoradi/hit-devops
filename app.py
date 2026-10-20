@@ -1,51 +1,53 @@
-from flask import Flask, jsonify, render_template, request, json
+import json
+import logging
+import os
 import sys
 from datetime import datetime
-import logging
-from logging.config import dictConfig
 
-dictConfig({
-    'version': 1,
-    'formatters': {'default': {
-        'format': '[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
-    }},
-    'handlers': {'wsgi': {
-        'class': 'logging.StreamHandler',
-        'stream': 'ext://flask.logging.wsgi_errors_stream',
-        'formatter': 'default'
-    }},
-    'root': {
-        'level': 'INFO',
-        'handlers': ['wsgi']
-    }
-})
+from flask import Flask, jsonify, render_template, request
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
 
+# The app is only exposed through the Kubernetes ingress. Trust one proxy hop
+# so request.remote_addr resolves to the client IP supplied by that ingress.
+# If the ingress topology changes, update this value to match the trusted hops.
+if os.getenv("TRUST_PROXY_HEADERS", "true").lower() == "true":
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
-@app.route("/", methods=["GET", "POST"])
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(logging.Formatter("%(message)s"))
+app.logger.handlers.clear()
+app.logger.addHandler(handler)
+app.logger.setLevel(logging.INFO)
+app.logger.propagate = False
+
+
+def log_request() -> None:
+    """Emit one JSON object per request so container log collectors can parse it."""
+    event = {
+        "url": f"{request.host}{request.path}",
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "client_ip": request.remote_addr or "unknown",
+        "service_name": "medusa",
+    }
+    app.logger.info(json.dumps(event, separators=(",", ":"), ensure_ascii=False))
+
+
+@app.route("/", methods=["GET"])
 def home():
-    req_time = datetime.now().strftime("%Y-%d-%m  %H:%M:%S")
-    log = json.dumps({
-        "url": request.url,
-        "time": req_time,
-        "client_ip": request.remote_addr,
-        "service_name": "medusa"
-    }, indent=2)
-    app.logger.error(log)
+    log_request()
     return render_template("index.html")
 
 
-@app.route("/version", methods=["GET", "POST"])
+@app.route("/version", methods=["GET"])
 def version():
-    version = "0.0.0"
-    with open("version.txt") as f:
-        version = f.read()
-    output = {"APP": "Medusa", "Version": version.strip()}
-    return jsonify(output)
+    log_request()
+    with open("version.txt", encoding="utf-8") as version_file:
+        app_version = version_file.read().strip()
+    return jsonify({"APP": "Medusa", "Version": app_version})
 
 
 if __name__ == "__main__":
-    handler = logging.StreamHandler(sys.stdout)
-    app.logger.addHandler(handler)
-    app.run(debug=True)
+    # Local development only. Production runs under Gunicorn in the container.
+    app.run(host="0.0.0.0", port=5000, debug=False)

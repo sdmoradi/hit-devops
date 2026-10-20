@@ -1,87 +1,209 @@
 name: ci-cd
+
 on:
   push:
     branches:
-      - "master"
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hit-devops-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  automation:
+  build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: docker.io/sdmoradi/hit-app
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - id: changed-files
-        uses: ahmadnassri/action-changed-files@v1
-      - run: |
-          for file in ${{ steps.changed-files.outputs.files }}; do
-            echo "$file has changed"
-          done
-      - if: contains(steps.changed-files.outputs.files, 'requirements.txt')
+      - name: Validate application
+        shell: bash
         run: |
-          cat version.txt | awk '{split($0,a,"."); print a[1]+1 "." a[2] "." a[3]}' | tee version.txt
-          echo "commit=True" >> $GITHUB_ENV
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m compileall -q app.py
+          python - <<'PY'
+          import json
+          import app
 
-      - if: contains(steps.changed-files.outputs.files, 'app.py')
-        run: |
-          cat version.txt | awk '{split($0,a,"."); print a[1] "." a[2]+1 "." a[3]}' | tee version.txt
-          echo "commit=True" >> $GITHUB_ENV
+          client = app.app.test_client()
+          response = client.get("/version")
+          assert response.status_code == 200, response.status_code
+          payload = response.get_json()
+          assert payload["APP"] == "Medusa", payload
+          assert payload["Version"], payload
+          print("Application smoke test passed.")
+          PY
 
-      - if: contains(steps.changed-files.outputs.files, 'README.md')
-        run: |
-          cat version.txt | awk '{split($0,a,"."); print a[1] "." a[2] "." a[3]+1}' | tee version.txt
-          echo "commit=True" >> $GITHUB_ENV
+      - name: Build container image (PR validation)
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
 
-      - name: change-commit-push
-        if: ${{env.commit}} == 'True'
+      - name: Detect changed files
+        id: changes
+        shell: bash
         run: |
-          git config --global user.name "sdmoradi"
-          git config --global user.email "sdmrd67@gmail.com"
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+          else
+            BASE_SHA="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
+            HEAD_SHA="$(git rev-parse HEAD)"
+          fi
+
+          if [[ "$BASE_SHA" =~ ^0+$ ]]; then
+            FILES="$(git ls-tree -r --name-only "$HEAD_SHA")"
+          else
+            FILES="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+          fi
+          printf '%s\n' "$FILES"
+          {
+            echo "files<<EOF"
+            printf '%s\n' "$FILES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          MAJOR=false
+          MINOR=false
+          PATCH=false
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            case "$file" in
+              requirements.txt) MAJOR=true ;;
+              README.md) PATCH=true ;;
+              app.py|templates/*|static/*|Dockerfile|deployment.yml) MINOR=true ;;
+              *.py|*.html|*.css|*.js) MINOR=true ;;
+            esac
+          done <<< "$FILES"
+
+          # One bump per change set; requirements takes precedence over code,
+          # which takes precedence over README-only changes.
+          BUMP=none
+          if [[ "$MAJOR" == true ]]; then BUMP=major
+          elif [[ "$MINOR" == true ]]; then BUMP=minor
+          elif [[ "$PATCH" == true ]]; then BUMP=patch
+          fi
+
+          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/master" && "$BUMP" != "none" ]]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump semantic version
+        if: steps.changes.outputs.release == 'true'
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import os
+
+          version_file = Path("version.txt")
+          raw = version_file.read_text(encoding="utf-8").strip()
+          parts = raw.split(".")
+          if len(parts) != 3 or not all(part.isdigit() for part in parts):
+              raise SystemExit(f"Invalid semantic version in version.txt: {raw!r}")
+          major, minor, patch = map(int, parts)
+          bump = os.environ["BUMP"]
+          if bump == "major":
+              major, minor, patch = major + 1, 0, 0
+          elif bump == "minor":
+              minor, patch = minor + 1, 0
+          elif bump == "patch":
+              patch += 1
+          else:
+              raise SystemExit(f"Unsupported bump type: {bump}")
+          version = f"{major}.{minor}.{patch}"
+          version_file.write_text(version + "\n", encoding="utf-8")
+          print(f"version={version}")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"version={version}\n")
+          PY
+        env:
+          BUMP: ${{ steps.changes.outputs.bump }}
+
+      - name: Commit version bump
+        if: steps.changes.outputs.release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "sdmoradi"
+          git config user.email "saeid.devops@gmail.com"
           git add version.txt
-          git commit -m "change patch version"
-          git push
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: bump version to ${{ steps.version.outputs.version }} [skip ci]"
+            git push origin HEAD:master
+          fi
 
-      - name: Get version
-        run: echo "version=$(cat version.txt)" >> $GITHUB_ENV
+      - name: Set up QEMU
+        if: steps.changes.outputs.release == 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: steps.changes.outputs.release == 'true'
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v2
+        if: steps.changes.outputs.release == 'true'
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Build and push
-        if: ${{env.commit}} == 'True'
-        uses: docker/build-push-action@v3
+      - name: Build and push versioned image
+        if: steps.changes.outputs.release == 'true'
+        uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
           push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/hit-app:${{env.version}}
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE_NAME }}:latest
 
-      - name: Build and push latest tag
-        if: ${{env.commit}} == 'True'
-        uses: docker/build-push-action@v3
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/hit-app:latest
+      - name: Configure kubectl
+        if: steps.changes.outputs.release == 'true'
+        uses: azure/setup-kubectl@v4
 
-      - name: kubectl apply deployment
-        if: ${{env.commit}} == 'True'
-        uses: tale/kubectl-action@v1
-        with:
-          base64-kube-config: ${{ secrets.KUBE_CONFIG }}
-      - run: kubectl apply -f deployment.yml
+      - name: Deploy to Kubernetes
+        if: steps.changes.outputs.release == 'true'
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+          IMAGE: ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${KUBE_CONFIG:-}" ]]; then
+            echo "KUBE_CONFIG secret is not configured." >&2
+            exit 1
+          fi
+          KUBECONFIG_FILE="$RUNNER_TEMP/kubeconfig"
+          printf '%s' "$KUBE_CONFIG" | base64 --decode > "$KUBECONFIG_FILE"
+          chmod 600 "$KUBECONFIG_FILE"
+          export KUBECONFIG="$KUBECONFIG_FILE"
 
-      - name: kubectl change image to new
-        if: ${{env.commit}} == 'True'
-        uses: tale/kubectl-action@v1
-        with:
-          base64-kube-config: ${{ secrets.KUBE_CONFIG }}
-      - run: kubectl set image deploy/hit-deployment -n hit medusa=${{ secrets.DOCKER_HUB_USERNAME }}/hit-app:${{env.version}}
+          kubectl get namespace test
+          kubectl apply -f deployment.yml
+          kubectl set image deployment/hit-deployment medusa="$IMAGE" -n test
+          kubectl rollout status deployment/hit-deployment -n test --timeout=180s
