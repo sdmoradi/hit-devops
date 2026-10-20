@@ -1,4 +1,4 @@
-# Elasticsearch Service
+# Demo single-node Elasticsearch. For production, enable security and use TLS/secrets.
 apiVersion: v1
 kind: Service
 metadata:
@@ -9,10 +9,10 @@ spec:
   selector:
     component: elasticsearch
   ports:
-  - port: 9200
-    targetPort: 9200
+    - name: http
+      port: 9200
+      targetPort: 9200
 ---
-# Elasticsearch PV Claim
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -20,12 +20,11 @@ metadata:
   namespace: elk
 spec:
   accessModes:
-    - ReadWriteOnce 
+    - ReadWriteOnce
   resources:
     requests:
       storage: 5Gi
 ---
-# Elasticsearch Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -41,28 +40,29 @@ spec:
       labels:
         component: elasticsearch
     spec:
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:7.17.17
+          ports:
+            - name: http
+              containerPort: 9200
+          env:
+            - name: discovery.type
+              value: single-node
+            - name: xpack.security.enabled
+              value: "false"
+            - name: ES_JAVA_OPTS
+              value: "-Xms1g -Xmx1g"
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              memory: 3Gi
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: elasticsearch-pv-claim
-        - name: logs
-          emptyDir: {}
-      containers:
-        - name: elasticsearch
-          image: docker.elastic.co/elasticsearch/elasticsearch:7.17.1
-          ports:
-            - containerPort: 9200
-          volumeMounts:
-            - name: data
-              mountPath: /usr/share/elasticsearch/data
-            - name: logs
-              mountPath: /usr/share/elasticsearch/logs
-          env:
-            - name: discovery.type
-              value: single-node
-            - name: bootstrap.memory_lock
-              value: 'true'
-            - name: ES_JAVA_OPTS
-              value: '-server -Xss1024K -Xmx2G'
-            - name: TAKE_FILE_OWNERSHIP
-              value: 'true'
