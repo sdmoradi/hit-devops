@@ -70,19 +70,5 @@ spec:
         - name: config
           configMap:
             name: kibana-config
----
-# This route assumes Traefik is installed with the legacy traefik.containo.us CRD.
-apiVersion: traefik.containo.us/v1alpha1
-kind: IngressRoute
-metadata:
-  name: kibana-ing
-  namespace: elk
-spec:
-  entryPoints:
-    - web
-  routes:
-    - match: Host(`kibana.nullip.ir`)
-      kind: Rule
-      services:
-        - name: kibana
-          port: 5601
+# Kibana is intentionally ClusterIP-only because demo security is disabled.
+# Access it through: kubectl -n elk port-forward svc/kibana 5601:5601
