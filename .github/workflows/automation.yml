@@ -20,7 +20,7 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     env:
-      IMAGE_NAME: docker.io/${{ secrets.DOCKER_HUB_USERNAME }}/hit-app
+      IMAGE_NAME: docker.io/sdmoradi/hit-app
     steps:
       - name: Checkout
         uses: actions/checkout@v4
