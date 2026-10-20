@@ -27,6 +27,33 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validate application
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m compileall -q app.py
+          python - <<'PY'
+          import json
+          import app
+
+          client = app.app.test_client()
+          response = client.get("/version")
+          assert response.status_code == 200, response.status_code
+          payload = response.get_json()
+          assert payload["APP"] == "Medusa", payload
+          assert payload["Version"], payload
+          print("Application smoke test passed.")
+          PY
+
+      - name: Build container image (PR validation)
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+
       - name: Detect changed files
         id: changes
         shell: bash
